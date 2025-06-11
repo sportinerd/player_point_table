@@ -1,0 +1,8 @@
+flask
+beautifulsoup4
+numpy
+pandas
+scipy
+openpyxl
+pymongo==4.13.0
+python-dotenv==1.1.0

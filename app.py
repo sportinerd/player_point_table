@@ -4,11 +4,31 @@ from flask import Flask, jsonify, request
 import point_calculator # Import your calculation module
 import logging 
 import os 
+from pymongo import MongoClient
+from dotenv import load_dotenv
+
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
 
 # Configure logging for Flask app
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+
+# Read values from .env
+MONGODB_URI = os.getenv("MONGO_DB_URL")
+MONGODB_CLIENT = os.getenv("MONGODB_DB_CLIENT")
+
+# connect with database
+client = MongoClient(MONGODB_URI)
+db = client[MONGODB_CLIENT]
+
+# Collections
+# fixtures_collection = db["fixtures"]
+# fixtures_by_team_collection = db["fixtures_by_team"]
+fixtures_by_sportmonks = db["sportmonks_fixture_data"]
 
 @app.route('/')
 def home():
@@ -36,6 +56,23 @@ def get_player_points_api():
         return jsonify({"message": "No player point data generated. Check server logs for warnings."}), 200
 
     app.logger.info(f"Successfully processed request. Returning data for {len(data)} matches.")
+    if data:
+        for eachMatch in data:
+            eachMatch_dict= eachMatch
+            match_id = eachMatch_dict["MatchAPUIDs"]
+            home_api, away_api = match_id.split("_vs_")
+            fixture_found_query = {"home_team.api_team_id":int(home_api),"away_team.api_team_id":int(away_api)}
+            print(fixture_found_query)
+            result = fixtures_by_sportmonks.find_one(fixture_found_query)
+            current_fixture_api_id = None
+            print("result")
+            print(result)
+            if result is not None:
+                current_fixture_api_id = result.get("api_fixture_id")
+                print("Result found and is not None -> ",current_fixture_api_id)
+                eachMatch["fixture_api_id"] = current_fixture_api_id 
+
+
     return jsonify(data), 200
 
 if __name__ == '__main__':
