@@ -935,6 +935,11 @@ def generate_all_player_points_data():
 
         home_team_api_id_for_match = fdr_match_row['home_team_api_id']
         away_team_api_id_for_match = fdr_match_row['away_team_api_id']
+        
+        # Details for player's team and opponent team
+        home_team_details = TEAM_DETAILS.get(home_c, DEFAULT_TEAM_DETAIL)
+        away_team_details = TEAM_DETAILS.get(away_c, DEFAULT_TEAM_DETAIL)
+
         current_match_home_players = player_df[player_df['Team_Canonical'] == home_c]
         current_match_away_players = player_df[player_df['Team_Canonical'] == away_c]
 
@@ -974,12 +979,12 @@ def generate_all_player_points_data():
         if not score_probs: print(f"Warning: No score probabilities for {match_id_str}. Skipping players."); continue
 
         team_h_goals_s, team_h_assists_s = team_goals_season_overall.get(home_c,1) or 1, team_assists_season_overall.get(home_c,1) or 1
-        home_team_details = TEAM_DETAILS.get(home_c, DEFAULT_TEAM_DETAIL)
+        # home_team_details is already defined above
         for _, p_row in current_match_home_players.iterrows():
             exp_pts = sum(calculate_player_points_for_specific_score(p_row, int(s.split('-')[0]), int(s.split('-')[1]), team_h_goals_s, team_h_assists_s) * prob for s,prob in score_probs.items() if '-' in s)
             player_points_results_list.append({
-                'fixture_id': fixture_id_val, # Added
-                'GW': gw_val,                 # Added
+                'fixture_id': fixture_id_val, 
+                'GW': gw_val,                 
                 'MatchIdentifier': match_id_str,
                 'Date': date_s,
                 'Player Name': p_row.get('Player Name'),
@@ -987,6 +992,7 @@ def generate_all_player_points_data():
                 'Team API ID': home_team_details.get('api_id'),
                 'Team Short Code': home_team_details.get('short_code'),
                 'OpponentTeamApiId': away_team_api_id_for_match,
+                'OpponentTeamShortCode': away_team_details.get('short_code'), # MODIFIED: Opponent is away_team
                 'Player API ID': p_row.get(player_api_id_col),
                 'player_id': p_row.get(player_id_col_excel),
                 'player_display_name': p_row.get(player_display_name_col),
@@ -997,12 +1003,12 @@ def generate_all_player_points_data():
             })
 
         team_a_goals_s, team_a_assists_s = team_goals_season_overall.get(away_c,1) or 1, team_assists_season_overall.get(away_c,1) or 1
-        away_team_details = TEAM_DETAILS.get(away_c, DEFAULT_TEAM_DETAIL)
+        # away_team_details is already defined above
         for _, p_row in current_match_away_players.iterrows():
             exp_pts = sum(calculate_player_points_for_specific_score(p_row, int(s.split('-')[1]), int(s.split('-')[0]), team_a_goals_s, team_a_assists_s) * prob for s,prob in score_probs.items() if '-' in s)
             player_points_results_list.append({
-                'fixture_id': fixture_id_val, # Added
-                'GW': gw_val,                 # Added
+                'fixture_id': fixture_id_val, 
+                'GW': gw_val,                 
                 'MatchIdentifier': match_id_str,
                 'Date': date_s,
                 'Player Name': p_row.get('Player Name'),
@@ -1010,6 +1016,7 @@ def generate_all_player_points_data():
                 'Team API ID': away_team_details.get('api_id'),
                 'Team Short Code': away_team_details.get('short_code'),
                 'OpponentTeamApiId': home_team_api_id_for_match,
+                'OpponentTeamShortCode': home_team_details.get('short_code'), # MODIFIED: Opponent is home_team
                 'Player API ID': p_row.get(player_api_id_col),
                 'player_id': p_row.get(player_id_col_excel),
                 'player_display_name': p_row.get(player_display_name_col),
@@ -1029,8 +1036,7 @@ def generate_all_player_points_data():
 
     player_points_df['ExpectedPoints'] = pd.to_numeric(player_points_df['ExpectedPoints'], errors='coerce').fillna(0.0)
     player_points_df['BonusPoints'] = 0
-    # Group by a unique match identifier (fixture_id should be good if always present and unique)
-    # If fixture_id can be 'N/A_ID', then MatchIdentifier might be safer for bonus uniqueness
+    
     group_cols_for_bonus = ['fixture_id', 'GW']
     if 'fixture_id' in player_points_df.columns and player_points_df['fixture_id'].astype(str).str.contains("N/A_ID", na=False).any():
         print("Warning: Fallback fixture_ids detected. Using MatchIdentifier for bonus point grouping uniqueness.")
@@ -1046,25 +1052,25 @@ def generate_all_player_points_data():
     player_points_df['TotalPoints'] = round(player_points_df['ExpectedPoints'] + player_points_df['BonusPoints'], 2)
 
     grouped_data = []
+    # MODIFIED: Added 'OpponentTeamShortCode' to output columns
     player_output_columns = [
-        'Player Name', 'Team Name', 'Team API ID', 'Team Short Code', 'OpponentTeamApiId',
+        'Player Name', 'Team Name', 'Team API ID', 'Team Short Code', 
+        'OpponentTeamApiId', 'OpponentTeamShortCode', 
         'Player API ID', 'player_id', player_display_name_col, player_price_col, player_image_col, 'TotalPoints'
     ]
-    for col in player_output_columns: # Ensure columns exist before trying to use them for output
+    for col in player_output_columns: 
         if col not in player_points_df.columns:
             print(f"Final Check Warning: Column '{col}' missing from player_points_df. Adding with None.")
             player_points_df[col] = None
-        else: # NaN to None conversion for JSON
+        else: 
             if pd.api.types.is_numeric_dtype(player_points_df[col]):
                  player_points_df[col] = player_points_df[col].astype(object).where(player_points_df[col].notna(), None)
             elif player_points_df[col].dtype == 'object':
                  player_points_df[col] = player_points_df[col].replace({np.nan: None, 'nan': None, 'None': None, '':None, 'NA':None})
 
 
-    # Group by new primary keys: fixture_id, GW, plus existing MatchIdentifier and Date
     for (fix_id_grp, gw_grp, match_id_grp, date_grp), group_df_iterable in player_points_df.groupby(['fixture_id', 'GW', 'MatchIdentifier', 'Date']):
         group_df = group_df_iterable.copy()
-        # Re-apply NaN to None for the specific group_df being processed
         for col in player_output_columns:
             if col in group_df.columns:
                 if pd.api.types.is_numeric_dtype(group_df[col]):
@@ -1074,17 +1080,16 @@ def generate_all_player_points_data():
             else: group_df[col] = None
 
         match_info = {
-            "fixture_id": fix_id_grp,        # New
-            "GW": gw_grp,                    # New
-            "MatchIdentifier": match_id_grp, # Retained for readability
-            "Date": date_grp,                # Retained
+            "fixture_id": fix_id_grp,        
+            "GW": gw_grp,                    
+            "MatchIdentifier": match_id_grp, 
+            "Date": date_grp,                
             "players": group_df[player_output_columns].to_dict(orient='records')
         }
         grouped_data.append(match_info)
 
     print("\nPlayer points calculated using methods for matches (from point_calculator):")
     if 'PointsCalcMethod' in player_points_df.columns:
-        # Use a robust match identifier for unique method counts
         if 'fixture_id' in player_points_df.columns and 'GW' in player_points_df.columns and 'MatchIdentifier' in player_points_df.columns:
             method_counts_df = player_points_df.drop_duplicates(subset=['fixture_id', 'GW', 'MatchIdentifier'])
             method_counts = method_counts_df['PointsCalcMethod'].value_counts()
@@ -1098,4 +1103,6 @@ def generate_all_player_points_data():
 
     print(f"Successfully generated grouped player point data for {len(grouped_data)} matches in calculation engine.")
     return grouped_data, None
+
+
 
